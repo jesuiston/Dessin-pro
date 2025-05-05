@@ -1,0 +1,219 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icone" href="icone.png">
+  <title>Duolingo</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #f0f0f0;
+    }
+    canvas {
+      display: block;
+      touch-action: none;
+      background: white;
+    }
+    #toolbar {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    button, input[type=color], input[type=range] {
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+<div id="toolbar">
+  <select id="tool">
+    <option value="brush">Pinceau</option>
+    <option value="eraser">Gomme</option>
+    <option value="line">Ligne</option>
+    <option value="rect">Rectangle</option>
+    <option value="ellipse">Ellipse</option>
+    <option value="fill">Remplissage</option>
+    <option value="picker">Pipette</option>
+    <option value="text">Texte</option>
+  </select>
+  <input type="color" id="color" value="#000000">
+  <input type="range" id="size" min="1" max="50" value="5">
+  <button onclick="undo()">Annuler</button>
+  <button onclick="redo()">Rétablir</button>
+  <button onclick="saveImage()">Exporter PNG</button>
+</div>
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+
+let drawing = false;
+let lastX = 0, lastY = 0;
+let history = [];
+let redoStack = [];
+let tool = 'brush';
+let pressure = 1;
+let startX = 0, startY = 0;
+
+
+const pointer = {
+  down: false,
+  x: 0,
+  y: 0,
+  color: '#000000',
+  size: 5,
+  tool: 'brush',
+};
+
+
+function saveState() {
+  history.push(canvas.toDataURL());
+  redoStack = [];
+}
+
+
+function undo() {
+  if (history.length === 0) return;
+  redoStack.push(canvas.toDataURL());
+  const img = new Image();
+  img.onload = () => ctx.drawImage(img, 0, 0);
+  img.src = history.pop();
+}
+
+
+function redo() {
+  if (redoStack.length === 0) return;
+  history.push(canvas.toDataURL());
+  const img = new Image();
+  img.onload = () => ctx.drawImage(img, 0, 0);
+  img.src = redoStack.pop();
+}
+
+
+function saveImage() {
+  const link = document.createElement('a');
+  link.download = 'dessin.png';
+  link.href = canvas.toDataURL();
+  link.click();
+}
+
+
+canvas.addEventListener("pointerdown", e => {
+  pointer.down = true;
+  pointer.x = e.offsetX;
+  pointer.y = e.offsetY;
+  startX = pointer.x;
+  startY = pointer.y;
+  pressure = e.pressure || 1;
+  saveState(); // Sauvegarde l'état avant chaque dessin
+  if (tool === 'fill') {
+    // Remplissage (flood fill)
+    ctx.fillStyle = pointer.color;
+    ctx.fillRect(pointer.x, pointer.y, 10, 10);
+  } else if (tool === 'picker') {
+    // Pipette (récupération de couleur)
+    const pixel = ctx.getImageData(pointer.x, pointer.y, 1, 1);
+    pointer.color = `rgb(${pixel.data[0]}, ${pixel.data[1]}, ${pixel.data[2]})`;
+  }
+});
+
+
+canvas.addEventListener("pointerup", () => pointer.down = false);
+canvas.addEventListener("pointermove", e => {
+  if (!pointer.down) return;
+  const x = e.offsetX;
+  const y = e.offsetY;
+  pressure = e.pressure || 1;
+  const size = pointer.size * pressure;
+  ctx.lineWidth = size;
+  ctx.lineCap = "round";
+  ctx.strokeStyle = (tool === 'eraser') ? '#ffffff' : pointer.color;
+  ctx.fillStyle = ctx.strokeStyle;
+
+
+  if (tool === 'brush' || tool === 'eraser') {
+    ctx.beginPath();
+    ctx.moveTo(pointer.x, pointer.y);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }
+
+
+  if (tool === 'line') {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);  // Efface le dessin précédent
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  }
+
+
+  if (tool === 'rect') {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    ctx.rect(startX, startY, x - startX, y - startY);
+    ctx.stroke();
+  }
+
+
+  if (tool === 'ellipse') {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    ctx.ellipse(startX, startY, Math.abs(x - startX), Math.abs(y - startY), 0, 0, 2 * Math.PI);
+    ctx.stroke();
+  }
+
+
+  pointer.x = x;
+  pointer.y = y;
+});
+
+
+canvas.addEventListener("pointerup", () => {
+  if (tool === 'line' || tool === 'rect' || tool === 'ellipse') {
+    ctx.stroke();
+  }
+});
+
+
+// UI bindings
+const toolSel = document.getElementById("tool");
+toolSel.addEventListener("change", e => tool = e.target.value);
+document.getElementById("color").addEventListener("input", e => pointer.color = e.target.value);
+document.getElementById("size").addEventListener("input", e => pointer.size = parseInt(e.target.value));
+
+
+// Resize listener
+window.addEventListener("resize", () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const img = new Image();
+  img.src = canvas.toDataURL();
+  img.onload = () => ctx.drawImage(img, 0, 0);
+});
+
+
+// Service Worker registration
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+    .then(reg => console.log('Service Worker enregistré:', reg))
+    .catch(err => console.log('Échec de l\'enregistrement du Service Worker:', err));
+}
+</script>
+</body>
+</html>

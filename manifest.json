@@ -1,0 +1,59 @@
+﻿const CACHE_NAME = "dessin-pro-cache-v1";
+const urlsToCache = [
+  "/",
+  "/index.html",
+  "/manifest.json",
+  "/icone.png”
+];
+
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(urlsToCache))
+  );
+});
+
+
+self.addEventListener("activate", (event) => {
+  const cacheWhitelist = [CACHE_NAME];
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (!cacheWhitelist.includes(cacheName)) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});
+
+
+self.addEventListener("fetch", (event) => {
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(event.request);
+    })
+  );
+});
+{
+  "name": "Duolingo",
+  "short_name": "Duolingo",
+  "description": "Apprends + de 40 langues gratuitement sur Duolingo!",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "icone.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ]
+}
